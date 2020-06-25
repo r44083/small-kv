@@ -1,0 +1,33 @@
+{
+    "version": "0.2.0",
+    "configurations":
+    [
+        {
+            "name": "gdb",
+            "type": "cppdbg",
+            "request": "launch",
+            "windows":
+            {
+                "program": "${workspaceFolder}/build/bin/${workspaceRootFolderName}.exe",
+                "miDebuggerPath": "gdb.exe"
+            },
+            "linux":
+            {
+                "program": "${workspaceFolder}/build/bin/${workspaceRootFolderName}",
+                "miDebuggerPath": "gdb"
+            },
+            "cwd": "${workspaceFolder}",
+            "externalConsole": true,
+            "internalConsoleOptions": "neverOpen",
+            "stopAtEntry": true,
+            "preLaunchTask": "make",
+            "setupCommands":
+            [
+                {
+                    "description": "Enable pretty-printing for gdb",
+                    "text": "-enable-pretty-printing"
+                }
+            ]
+        }
+    ]
+}

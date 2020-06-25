@@ -1,0 +1,16 @@
+{
+    "configurations":
+    [
+        {
+            "name": "database",
+            "includePath":
+            [
+                "${workspaceFolder}/src/**"
+            ],
+            "defines":
+            [
+            ]
+        }
+    ],
+    "version": 4
+}
