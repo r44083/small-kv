@@ -1,4 +1,5 @@
 MODULES := src \
+	src/third_party/protobuf \
 	src/database
 
 ROOT := $(patsubst %/,%,$(dir $(lastword $(MAKEFILE_LIST))))
@@ -11,7 +12,9 @@ BINDIR := $(BUILDDIR)/bin
 BIN := $(BINDIR)/$(notdir $(CURDIR))
 MAP := $(BUILDDIR)/$(notdir $(CURDIR)).map
 
-GLOBAL_INC :=
+GLOBAL_INC := $(ROOT)/src \
+	$(ROOT)/src/third_party/protobuf/src
+
 GLOBAL_DEF :=
 GLOBAL_C_CPP_FLAGS := -O0 -g3 -Wall
 GLOBAL_CFLAGS := -std=c99
@@ -25,6 +28,7 @@ AS := gcc -x assembler-with-cpp
 LD := g++
 GDB := gdb
 SIZE := size
+PROTOC := $(ROOT)/protoc/bin/protoc
 
 ifeq ($(OS),Windows_NT)
 
