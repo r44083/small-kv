@@ -1,6 +1,6 @@
 MODULES := src \
 	src/third_party/protobuf \
-	src/database
+	src/third_party/rax
 
 ROOT := $(patsubst %/,%,$(dir $(lastword $(MAKEFILE_LIST))))
 
