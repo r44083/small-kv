@@ -2,7 +2,7 @@
     "configurations":
     [
         {
-            "name": "database",
+            "name": "Win32",
             "includePath":
             [
                 "${workspaceFolder}/src/**"
