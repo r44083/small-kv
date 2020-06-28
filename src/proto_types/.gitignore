@@ -1,0 +1,3 @@
+# Output folder
+*.pb.cc
+*.pb.h

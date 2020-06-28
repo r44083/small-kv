@@ -1,0 +1,34 @@
+syntax = "proto3";
+option optimize_for = LITE_RUNTIME;
+
+package types;
+
+enum Spell {
+  FIREBALL = 0;
+  THUNDERBOLT = 1;
+}
+
+enum Weapon {
+  SWORD = 0;
+  BOW = 1;
+}
+
+message MageInfo {
+  repeated Spell spellbook = 1;
+  int64 mana = 2;
+}
+
+message WarriorInfo {
+  Weapon weapon = 1;
+  int64 arrows_number = 2;
+}
+
+message Hero {
+  string name = 1;
+  int64 hp = 2;
+  int64 xp = 3;
+  oneof class_specific_info {
+    WarriorInfo warrior_info = 4;
+    MageInfo mage_info = 5;
+  }
+}

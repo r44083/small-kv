@@ -1,4 +1,6 @@
-MODULES := src \
+MODULES := src/proto_types \
+	src \
+	src/small-kv \
 	src/third_party/protobuf \
 	src/third_party/rax
 
