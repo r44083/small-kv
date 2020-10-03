@@ -1,4 +1,5 @@
-#include "proto_types/types.pb.h"
+//#include "proto_types/types.pb.h"
+#include "/home/g561688/dev/myprojects/small-kv/build/src/proto_types/types.pb.h"
 #include "small-kv/kv.hpp"
 
 using namespace types;
