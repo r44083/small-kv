@@ -3,6 +3,9 @@ cmake_minimum_required(VERSION 3.5)
 project(small-kv)
 
 set(CMAKE_CXX_STANDARD 11)
+if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
+    set(CMAKE_BUILD_TYPE Debug)
+endif()
 
 set(PROTOBUF_LIBRARY libprotobuf-lite)
 set(PROTOBUF_INCLUDE_DIR src/third_party/protobuf/src)
