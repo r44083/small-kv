@@ -2,7 +2,6 @@
 
 #include <stdint.h>
 #include <stdlib.h>
-#include "third_party/rax/rax.h"
 
 namespace database
 {
@@ -43,6 +42,6 @@ class kv
         // Do not forget to free(buff) after use
         int _get(const char *key, uint8_t **buff, size_t &size);
         
-        rax *rt;
+        void *rt;
 };
 };
