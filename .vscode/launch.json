@@ -6,17 +6,9 @@
             "name": "gdb",
             "type": "cppdbg",
             "request": "launch",
-            "windows":
-            {
-                "program": "${workspaceFolder}/build/small-kv.exe",
-                "miDebuggerPath": "gdb.exe"
-            },
-            "linux":
-            {
-                "program": "${workspaceFolder}/build/small-kv",
-                "miDebuggerPath": "gdb"
-            },
-            "cwd": "${workspaceFolder}/build",
+            "program": "${workspaceFolder}/build/small-kv",
+            "miDebuggerPath": "gdb",
+            "cwd": "${workspaceFolder}",
             "externalConsole": true,
             "internalConsoleOptions": "neverOpen",
             "stopAtEntry": true,

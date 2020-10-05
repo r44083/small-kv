@@ -6,7 +6,7 @@
             "includePath":
             [
                 "${workspaceFolder}/src/**",
-                "${workspaceFolder}/build/src/proto_types"
+                "${workspaceFolder}/build/src/proto_types/**"
             ],
             "defines":
             [

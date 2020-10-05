@@ -4,7 +4,14 @@
         {
             "label": "build",
             "type": "shell",
-            "command": "cmake . -Bbuild && make -C build",
+            "windows":
+            {
+                "command": "cmake . -Bbuild -G \"MinGW Makefiles\" && make -C build"
+            },
+            "linux":
+            {
+                "command": "cmake . -Bbuild && make -C build",
+            },
             "presentation":
             {
                 "reveal": "silent",
