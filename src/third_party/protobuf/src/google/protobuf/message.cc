@@ -171,7 +171,7 @@ namespace {
 
 
 #define HASH_MAP std::unordered_map
-#define STR_HASH_FXN hash<const char*>
+#define HASH_FXN hash
 
 
 class GeneratedMessageFactory : public MessageFactory {
@@ -186,8 +186,8 @@ class GeneratedMessageFactory : public MessageFactory {
 
  private:
   // Only written at static init time, so does not require locking.
-  HASH_MAP<const char*, const google::protobuf::internal::DescriptorTable*, STR_HASH_FXN,
-           streq>
+  HASH_MAP<const char*, const google::protobuf::internal::DescriptorTable*,
+           HASH_FXN<const char*>, streq>
       file_map_;
 
   internal::WrappedMutex mutex_;

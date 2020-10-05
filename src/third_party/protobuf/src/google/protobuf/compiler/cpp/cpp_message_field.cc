@@ -199,10 +199,7 @@ void MessageFieldGenerator::GenerateInlineAccessorDefinitions(
         "}\n");
     format(
         "inline $type$* $classname$::$release_name$() {\n"
-        "$type_reference_function$"
-        "  $clear_hasbit$\n"
-        "  $type$* temp = $casted_member$;\n"
-        "  $name$_ = nullptr;\n"
+        "  auto temp = unsafe_arena_release_$name$();\n"
         "  if (GetArena() != nullptr) {\n"
         "    temp = ::$proto_ns$::internal::DuplicateIfNonNull(temp);\n"
         "  }\n"

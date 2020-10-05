@@ -95,8 +95,7 @@ class BinaryAndJsonConformanceSuite : public ConformanceTestSuite {
   void RunValidJsonTestWithValidator(const std::string& test_name,
                                      ConformanceLevel level,
                                      const std::string& input_json,
-                                     const Validator& validator,
-                                     bool is_proto3);
+                                     const Validator& validator);
   void ExpectParseFailureForJson(const std::string& test_name,
                                  ConformanceLevel level,
                                  const std::string& input_json);

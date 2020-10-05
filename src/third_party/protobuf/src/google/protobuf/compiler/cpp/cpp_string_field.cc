@@ -179,6 +179,23 @@ void StringFieldGenerator::GenerateAccessorDeclarations(
       "$deprecated_attr$void ${1$set_allocated_$name$$}$(std::string* "
       "$name$);\n",
       descriptor_);
+  if (options_.opensource_runtime) {
+    if (SupportsArenas(descriptor_)) {
+      format(
+          "$GOOGLE_PROTOBUF$_RUNTIME_DEPRECATED(\"The unsafe_arena_ accessors "
+          "for\"\n"
+          "\"    string fields are deprecated and will be removed in a\"\n"
+          "\"    future release.\")\n"
+          "std::string* ${1$unsafe_arena_release_$name$$}$();\n"
+          "$GOOGLE_PROTOBUF$_RUNTIME_DEPRECATED(\"The unsafe_arena_ accessors "
+          "for\"\n"
+          "\"    string fields are deprecated and will be removed in a\"\n"
+          "\"    future release.\")\n"
+          "void ${1$unsafe_arena_set_allocated_$name$$}$(\n"
+          "    std::string* $name$);\n",
+          descriptor_);
+    }
+  }
   format(
       "private:\n"
       "const std::string& _internal_$name$() const;\n"
@@ -290,6 +307,32 @@ void StringFieldGenerator::GenerateInlineAccessorDefinitions(
         "      GetArena());\n"
         "  // @@protoc_insertion_point(field_set_allocated:$full_name$)\n"
         "}\n");
+    if (options_.opensource_runtime) {
+      format(
+          "inline std::string* $classname$::unsafe_arena_release_$name$() {\n"
+          "$annotate_accessor$"
+          "  // "
+          "@@protoc_insertion_point(field_unsafe_arena_release:$full_name$)\n"
+          "  $DCHK$(GetArena() != nullptr);\n"
+          "  $clear_hasbit$\n"
+          "  return $name$_.UnsafeArenaRelease($default_variable$,\n"
+          "      GetArena());\n"
+          "}\n"
+          "inline void $classname$::unsafe_arena_set_allocated_$name$(\n"
+          "$annotate_accessor$"
+          "    std::string* $name$) {\n"
+          "  $DCHK$(GetArena() != nullptr);\n"
+          "  if ($name$ != nullptr) {\n"
+          "    $set_hasbit$\n"
+          "  } else {\n"
+          "    $clear_hasbit$\n"
+          "  }\n"
+          "  $name$_.UnsafeArenaSetAllocated($default_variable$,\n"
+          "      $name$, GetArena());\n"
+          "  // @@protoc_insertion_point(field_unsafe_arena_set_allocated:"
+          "$full_name$)\n"
+          "}\n");
+    }
   } else {
     // No-arena case.
     format(
@@ -711,13 +754,41 @@ void StringOneofFieldGenerator::GenerateInlineAccessorDefinitions(
         "  if ($name$ != nullptr) {\n"
         "    set_has_$name$();\n"
         "    $field_member$.UnsafeSetDefault($name$);\n"
-        "    ::$proto_ns$::Arena* arena = GetArena();\n"
-        "    if (arena != nullptr) {\n"
-        "      arena->Own($name$);\n"
-        "    }\n"
         "  }\n"
         "  // @@protoc_insertion_point(field_set_allocated:$full_name$)\n"
         "}\n");
+    if (options_.opensource_runtime) {
+      format(
+          "inline std::string* $classname$::unsafe_arena_release_$name$() {\n"
+          "$annotate_accessor$"
+          "  // "
+          "@@protoc_insertion_point(field_unsafe_arena_release:$full_name$)\n"
+          "  $DCHK$(GetArena() != nullptr);\n"
+          "  if (_internal_has_$name$()) {\n"
+          "    clear_has_$oneof_name$();\n"
+          "    return $field_member$.UnsafeArenaRelease(\n"
+          "        $default_variable$, GetArena());\n"
+          "  } else {\n"
+          "    return nullptr;\n"
+          "  }\n"
+          "}\n"
+          "inline void $classname$::unsafe_arena_set_allocated_$name$("
+          "std::string* $name$) {\n"
+          "$annotate_accessor$"
+          "  $DCHK$(GetArena() != nullptr);\n"
+          "  if (!_internal_has_$name$()) {\n"
+          "    $field_member$.UnsafeSetDefault($default_variable$);\n"
+          "  }\n"
+          "  clear_$oneof_name$();\n"
+          "  if ($name$) {\n"
+          "    set_has_$name$();\n"
+          "    $field_member$.UnsafeArenaSetAllocated($default_variable$, "
+          "$name$, GetArena());\n"
+          "  }\n"
+          "  // @@protoc_insertion_point(field_unsafe_arena_set_allocated:"
+          "$full_name$)\n"
+          "}\n");
+    }
   } else {
     // No-arena case.
     format(
@@ -844,6 +915,15 @@ void StringOneofFieldGenerator::GenerateConstructorCode(
   format(
       "$ns$::_$classname$_default_instance_.$name$_.UnsafeSetDefault(\n"
       "    $default_variable$);\n");
+}
+
+void StringOneofFieldGenerator::GenerateDestructorCode(
+    io::Printer* printer) const {
+  Formatter format(printer, variables_);
+  format(
+      "if (_internal_has_$name$()) {\n"
+      "  $field_member$.DestroyNoArena($default_variable$);\n"
+      "}\n");
 }
 
 // ===================================================================

@@ -252,7 +252,7 @@ TEST_P(DynamicMessageTest, Oneof) {
 }
 
 TEST_P(DynamicMessageTest, SpaceUsed) {
-  // Test that SpaceUsedLong() works properly
+  // Test that SpaceUsed() works properly
 
   // Since we share the implementation with generated messages, we don't need
   // to test very much here.  Just make sure it appears to be working.
@@ -261,10 +261,10 @@ TEST_P(DynamicMessageTest, SpaceUsed) {
   Message* message = prototype_->New(GetParam() ? &arena : NULL);
   TestUtil::ReflectionTester reflection_tester(descriptor_);
 
-  size_t initial_space_used = message->SpaceUsedLong();
+  int initial_space_used = message->SpaceUsed();
 
   reflection_tester.SetAllFieldsViaReflection(message);
-  EXPECT_LT(initial_space_used, message->SpaceUsedLong());
+  EXPECT_LT(initial_space_used, message->SpaceUsed());
 
   if (!GetParam()) {
     delete message;

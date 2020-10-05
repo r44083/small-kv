@@ -614,6 +614,7 @@ MessageGenerator::MessageGenerator(
     }
   }
 
+
   if (!has_bit_indices_.empty()) {
     field_generators_.SetHasBitIndices(has_bit_indices_);
   }
@@ -1035,7 +1036,7 @@ void MessageGenerator::GenerateClassDefinition(io::Printer* printer) {
         "    ::$proto_ns$::internal::WireFormatLite::$val_wire_type$,\n"
         "    $default_enum_value$ > SuperType;\n"
         "  $classname$();\n"
-        "  explicit $classname$(::$proto_ns$::Arena* arena);\n"
+        "  $classname$(::$proto_ns$::Arena* arena);\n"
         "  void MergeFrom(const $classname$& other);\n"
         "  static const $classname$* internal_default_instance() { return "
         "reinterpret_cast<const "
@@ -1123,7 +1124,7 @@ void MessageGenerator::GenerateClassDefinition(io::Printer* printer) {
   format.Indent();
 
   if (SupportsArenas(descriptor_)) {
-    format("inline $classname$() : $classname$(nullptr) {}\n");
+    format("inline $classname$() : $classname$(nullptr) {};\n");
   } else {
     format("$classname$();\n");
   }
@@ -1706,7 +1707,7 @@ bool MessageGenerator::GenerateParseTable(io::Printer* printer, size_t offset,
   }
 
   // TODO(ckennelly): Consolidate this with the calculation for
-  // AuxiliaryParseTableField.
+  // AuxillaryParseTableField.
   format(
       "PROTOBUF_FIELD_OFFSET($classtype$, _internal_metadata_),\n"
       "&$package_ns$::_$classname$_default_instance_,\n");
@@ -2302,14 +2303,14 @@ size_t MessageGenerator::GenerateParseAuxTable(io::Printer* printer) {
   std::vector<const FieldDescriptor*> ordered_fields =
       SortFieldsByNumber(descriptor_);
 
-  format("::$proto_ns$::internal::AuxiliaryParseTableField(),\n");
+  format("::$proto_ns$::internal::AuxillaryParseTableField(),\n");
   int last_field_number = 1;
   for (auto field : ordered_fields) {
     Formatter::SaveState saver(&format);
 
     GOOGLE_CHECK_GE(field->number(), last_field_number);
     for (; last_field_number < field->number(); last_field_number++) {
-      format("::$proto_ns$::internal::AuxiliaryParseTableField(),\n");
+      format("::$proto_ns$::internal::AuxillaryParseTableField(),\n");
     }
 
     std::map<std::string, std::string> vars;
@@ -2320,11 +2321,11 @@ size_t MessageGenerator::GenerateParseAuxTable(io::Printer* printer) {
       case FieldDescriptor::CPPTYPE_ENUM:
         if (HasPreservingUnknownEnumSemantics(field)) {
           format(
-              "{::$proto_ns$::internal::AuxiliaryParseTableField::enum_aux{"
+              "{::$proto_ns$::internal::AuxillaryParseTableField::enum_aux{"
               "nullptr}},\n");
         } else {
           format(
-              "{::$proto_ns$::internal::AuxiliaryParseTableField::enum_aux{"
+              "{::$proto_ns$::internal::AuxillaryParseTableField::enum_aux{"
               "$1$_IsValid}},\n",
               ClassName(field->enum_type(), true));
         }
@@ -2333,7 +2334,7 @@ size_t MessageGenerator::GenerateParseAuxTable(io::Printer* printer) {
       case FieldDescriptor::CPPTYPE_MESSAGE: {
         if (field->is_map()) {
           format(
-              "{::$proto_ns$::internal::AuxiliaryParseTableField::map_"
+              "{::$proto_ns$::internal::AuxillaryParseTableField::map_"
               "aux{&::$proto_ns$::internal::ParseMap<$1$>}},\n",
               QualifiedClassName(field->message_type(), options_));
           last_field_number++;
@@ -2344,7 +2345,7 @@ size_t MessageGenerator::GenerateParseAuxTable(io::Printer* printer) {
                                            field->message_type(), options_));
 
         format(
-            "{::$proto_ns$::internal::AuxiliaryParseTableField::message_aux{\n"
+            "{::$proto_ns$::internal::AuxillaryParseTableField::message_aux{\n"
             "  &$default_instance$}},\n");
         last_field_number++;
         break;
@@ -2367,7 +2368,7 @@ size_t MessageGenerator::GenerateParseAuxTable(io::Printer* printer) {
             break;
         }
         format(
-            "{::$proto_ns$::internal::AuxiliaryParseTableField::string_aux{\n"
+            "{::$proto_ns$::internal::AuxillaryParseTableField::string_aux{\n"
             "  $1$,\n"
             "  \"$2$\"\n"
             "}},\n",
@@ -2408,13 +2409,18 @@ std::pair<size_t, size_t> MessageGenerator::GenerateOffsets(
   } else {
     format("~0u,  // no _weak_field_map_\n");
   }
+  int num_stripped = 0;
+  for (auto field : FieldRange(descriptor_)) {
+    if (!IsFieldUsed(field, options_)) {
+      num_stripped++;
+    }
+  }
   const int kNumGenericOffsets = 5;  // the number of fixed offsets above
   const size_t offsets = kNumGenericOffsets + descriptor_->field_count() +
-                         descriptor_->real_oneof_decl_count();
+                         descriptor_->real_oneof_decl_count() - num_stripped;
   size_t entries = offsets;
   for (auto field : FieldRange(descriptor_)) {
     if (!IsFieldUsed(field, options_)) {
-      format("~0u,  // stripped\n");
       continue;
     }
     if (field->real_containing_oneof() || field->options().weak()) {
@@ -2445,8 +2451,11 @@ std::pair<size_t, size_t> MessageGenerator::GenerateOffsets(
         "0,\n"
         "1,\n");
   } else if (!has_bit_indices_.empty()) {
-    entries += has_bit_indices_.size();
+    entries += has_bit_indices_.size() - num_stripped;
     for (int i = 0; i < has_bit_indices_.size(); i++) {
+      if (!IsFieldUsed(descriptor_->field(i), options_)) {
+        continue;
+      }
       const std::string index =
           has_bit_indices_[i] >= 0 ? StrCat(has_bit_indices_[i]) : "~0u";
       format("$1$,\n", index);

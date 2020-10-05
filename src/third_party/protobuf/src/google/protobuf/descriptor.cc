@@ -383,8 +383,19 @@ class PrefixRemover {
 // hash-maps for each object.
 //
 // The keys to these hash-maps are (parent, name) or (parent, number) pairs.
+//
+// TODO(kenton):  Use StringPiece rather than const char* in keys?  It would
+//   be a lot cleaner but we'd just have to convert it back to const char*
+//   for the open source release.
 
-typedef std::pair<const void*, StringPiece> PointerStringPair;
+typedef std::pair<const void*, const char*> PointerStringPair;
+
+struct PointerStringPairEqual {
+  inline bool operator()(const PointerStringPair& a,
+                         const PointerStringPair& b) const {
+    return a.first == b.first && strcmp(a.second, b.second) == 0;
+  }
+};
 
 typedef std::pair<const Descriptor*, int> DescriptorIntPair;
 typedef std::pair<const EnumDescriptor*, int> EnumIntPair;
@@ -408,16 +419,16 @@ struct PointerIntegerPairHash {
   static const size_t min_buckets = 8;
 #endif
   inline bool operator()(const PairType& a, const PairType& b) const {
-    return a < b;
+    return a.first < b.first || (a.first == b.first && a.second < b.second);
   }
 };
 
 struct PointerStringPairHash {
   size_t operator()(const PointerStringPair& p) const {
     static const size_t prime = 16777619;
-    hash<StringPiece> string_hash;
+    hash<const char*> cstring_hash;
     return reinterpret_cast<size_t>(p.first) * prime ^
-           static_cast<size_t>(string_hash(p.second));
+           static_cast<size_t>(cstring_hash(p.second));
   }
 
 #ifdef _MSC_VER
@@ -427,25 +438,28 @@ struct PointerStringPairHash {
 #endif
   inline bool operator()(const PointerStringPair& a,
                          const PointerStringPair& b) const {
-    return a < b;
+    if (a.first < b.first) return true;
+    if (a.first > b.first) return false;
+    return strcmp(a.second, b.second) < 0;
   }
 };
 
 
 const Symbol kNullSymbol;
 
-typedef HASH_MAP<StringPiece, Symbol, HASH_FXN<StringPiece>>
+typedef HASH_MAP<const char*, Symbol, HASH_FXN<const char*>, streq>
     SymbolsByNameMap;
 
-typedef HASH_MAP<PointerStringPair, Symbol, PointerStringPairHash>
+typedef HASH_MAP<PointerStringPair, Symbol, PointerStringPairHash,
+                 PointerStringPairEqual>
     SymbolsByParentMap;
 
-typedef HASH_MAP<StringPiece, const FileDescriptor*,
-                 HASH_FXN<StringPiece>>
+typedef HASH_MAP<const char*, const FileDescriptor*, HASH_FXN<const char*>,
+                 streq>
     FilesByNameMap;
 
 typedef HASH_MAP<PointerStringPair, const FieldDescriptor*,
-                 PointerStringPairHash>
+                 PointerStringPairHash, PointerStringPairEqual>
     FieldsByNameMap;
 
 typedef HASH_MAP<DescriptorIntPair, const FieldDescriptor*,
@@ -576,16 +590,16 @@ class DescriptorPool::Tables {
 
   // Find symbols.  This returns a null Symbol (symbol.IsNull() is true)
   // if not found.
-  inline Symbol FindSymbol(StringPiece key) const;
+  inline Symbol FindSymbol(const std::string& key) const;
 
   // This implements the body of DescriptorPool::Find*ByName().  It should
   // really be a private method of DescriptorPool, but that would require
   // declaring Symbol in descriptor.h, which would drag all kinds of other
   // stuff into the header.  Yay C++.
-  Symbol FindByNameHelper(const DescriptorPool* pool, StringPiece name);
+  Symbol FindByNameHelper(const DescriptorPool* pool, const std::string& name);
 
   // These return nullptr if not found.
-  inline const FileDescriptor* FindFile(StringPiece key) const;
+  inline const FileDescriptor* FindFile(const std::string& key) const;
   inline const FieldDescriptor* FindExtension(const Descriptor* extendee,
                                               int number) const;
   inline void FindAllExtensions(const Descriptor* extendee,
@@ -619,7 +633,7 @@ class DescriptorPool::Tables {
 
   // Allocate a string which will be destroyed when the pool is destroyed.
   // The string is initialized to the given value for convenience.
-  std::string* AllocateString(StringPiece value);
+  std::string* AllocateString(const std::string& value);
 
   // Allocate empty string which will be destroyed when the pool is destroyed.
   std::string* AllocateEmptyString();
@@ -706,18 +720,18 @@ class FileDescriptorTables {
   // Find symbols.  These return a null Symbol (symbol.IsNull() is true)
   // if not found.
   inline Symbol FindNestedSymbol(const void* parent,
-                                 StringPiece name) const;
+                                 const std::string& name) const;
   inline Symbol FindNestedSymbolOfType(const void* parent,
-                                       StringPiece name,
+                                       const std::string& name,
                                        const Symbol::Type type) const;
 
   // These return nullptr if not found.
   inline const FieldDescriptor* FindFieldByNumber(const Descriptor* parent,
                                                   int number) const;
   inline const FieldDescriptor* FindFieldByLowercaseName(
-      const void* parent, StringPiece lowercase_name) const;
+      const void* parent, const std::string& lowercase_name) const;
   inline const FieldDescriptor* FindFieldByCamelcaseName(
-      const void* parent, StringPiece camelcase_name) const;
+      const void* parent, const std::string& camelcase_name) const;
   inline const EnumValueDescriptor* FindEnumValueByNumber(
       const EnumDescriptor* parent, int number) const;
   // This creates a new EnumValueDescriptor if not found, in a thread-safe way.
@@ -884,8 +898,8 @@ void DescriptorPool::Tables::RollbackToLastCheckpoint() {
 
 // -------------------------------------------------------------------
 
-inline Symbol DescriptorPool::Tables::FindSymbol(StringPiece key) const {
-  const Symbol* result = FindOrNull(symbols_by_name_, key);
+inline Symbol DescriptorPool::Tables::FindSymbol(const std::string& key) const {
+  const Symbol* result = FindOrNull(symbols_by_name_, key.c_str());
   if (result == nullptr) {
     return kNullSymbol;
   } else {
@@ -894,9 +908,9 @@ inline Symbol DescriptorPool::Tables::FindSymbol(StringPiece key) const {
 }
 
 inline Symbol FileDescriptorTables::FindNestedSymbol(
-    const void* parent, StringPiece name) const {
-  const Symbol* result =
-      FindOrNull(symbols_by_parent_, PointerStringPair(parent, name));
+    const void* parent, const std::string& name) const {
+  const Symbol* result = FindOrNull(
+      symbols_by_parent_, PointerStringPair(parent, name.c_str()));
   if (result == nullptr) {
     return kNullSymbol;
   } else {
@@ -905,14 +919,15 @@ inline Symbol FileDescriptorTables::FindNestedSymbol(
 }
 
 inline Symbol FileDescriptorTables::FindNestedSymbolOfType(
-    const void* parent, StringPiece name, const Symbol::Type type) const {
+    const void* parent, const std::string& name,
+    const Symbol::Type type) const {
   Symbol result = FindNestedSymbol(parent, name);
   if (result.type != type) return kNullSymbol;
   return result;
 }
 
 Symbol DescriptorPool::Tables::FindByNameHelper(const DescriptorPool* pool,
-                                                StringPiece name) {
+                                                const std::string& name) {
   if (pool->mutex_ != nullptr) {
     // Fast path: the Symbol is already cached.  This is just a hash lookup.
     ReaderMutexLock lock(pool->mutex_);
@@ -944,8 +959,8 @@ Symbol DescriptorPool::Tables::FindByNameHelper(const DescriptorPool* pool,
 }
 
 inline const FileDescriptor* DescriptorPool::Tables::FindFile(
-    StringPiece key) const {
-  return FindPtrOrNull(files_by_name_, key);
+    const std::string& key) const {
+  return FindPtrOrNull(files_by_name_, key.c_str());
 }
 
 inline const FieldDescriptor* FileDescriptorTables::FindFieldByNumber(
@@ -982,12 +997,12 @@ void FileDescriptorTables::FieldsByLowercaseNamesLazyInitInternal() const {
 }
 
 inline const FieldDescriptor* FileDescriptorTables::FindFieldByLowercaseName(
-    const void* parent, StringPiece lowercase_name) const {
+    const void* parent, const std::string& lowercase_name) const {
   internal::call_once(
       fields_by_lowercase_name_once_,
       &FileDescriptorTables::FieldsByLowercaseNamesLazyInitStatic, this);
   return FindPtrOrNull(fields_by_lowercase_name_,
-                            PointerStringPair(parent, lowercase_name));
+                            PointerStringPair(parent, lowercase_name.c_str()));
 }
 
 void FileDescriptorTables::FieldsByCamelcaseNamesLazyInitStatic(
@@ -1006,12 +1021,12 @@ void FileDescriptorTables::FieldsByCamelcaseNamesLazyInitInternal() const {
 }
 
 inline const FieldDescriptor* FileDescriptorTables::FindFieldByCamelcaseName(
-    const void* parent, StringPiece camelcase_name) const {
+    const void* parent, const std::string& camelcase_name) const {
   internal::call_once(
       fields_by_camelcase_name_once_,
       FileDescriptorTables::FieldsByCamelcaseNamesLazyInitStatic, this);
   return FindPtrOrNull(fields_by_camelcase_name_,
-                            PointerStringPair(parent, camelcase_name));
+                            PointerStringPair(parent, camelcase_name.c_str()));
 }
 
 inline const EnumValueDescriptor* FileDescriptorTables::FindEnumValueByNumber(
@@ -1181,7 +1196,7 @@ Type* DescriptorPool::Tables::AllocateArray(int count) {
   return reinterpret_cast<Type*>(AllocateBytes(sizeof(Type) * count));
 }
 
-std::string* DescriptorPool::Tables::AllocateString(StringPiece value) {
+std::string* DescriptorPool::Tables::AllocateString(const std::string& value) {
   std::string* result = new std::string(value);
   strings_.emplace_back(result);
   return result;
@@ -1293,16 +1308,16 @@ void DescriptorPool::InternalDontEnforceDependencies() {
   enforce_dependencies_ = false;
 }
 
-void DescriptorPool::AddUnusedImportTrackFile(ConstStringParam file_name,
+void DescriptorPool::AddUnusedImportTrackFile(const std::string& file_name,
                                               bool is_error) {
-  unused_import_track_files_[std::string(file_name)] = is_error;
+  unused_import_track_files_[file_name] = is_error;
 }
 
 void DescriptorPool::ClearUnusedImportTrackFiles() {
   unused_import_track_files_.clear();
 }
 
-bool DescriptorPool::InternalIsFileLoaded(ConstStringParam filename) const {
+bool DescriptorPool::InternalIsFileLoaded(const std::string& filename) const {
   MutexLockMaybe lock(mutex_);
   return tables_->FindFile(filename) != nullptr;
 }
@@ -1325,10 +1340,6 @@ DescriptorPool* NewGeneratedPool() {
 }
 
 }  // anonymous namespace
-
-DescriptorDatabase* DescriptorPool::internal_generated_database() {
-  return GeneratedDatabase();
-}
 
 DescriptorPool* DescriptorPool::internal_generated_pool() {
   static DescriptorPool* generated_pool =
@@ -1379,7 +1390,7 @@ void DescriptorPool::InternalAddGeneratedFile(
 //   there's nothing more important to do (read: never).
 
 const FileDescriptor* DescriptorPool::FindFileByName(
-    ConstStringParam name) const {
+    const std::string& name) const {
   MutexLockMaybe lock(mutex_);
   if (fallback_database_ != nullptr) {
     tables_->known_bad_symbols_.clear();
@@ -1399,7 +1410,7 @@ const FileDescriptor* DescriptorPool::FindFileByName(
 }
 
 const FileDescriptor* DescriptorPool::FindFileContainingSymbol(
-    ConstStringParam symbol_name) const {
+    const std::string& symbol_name) const {
   MutexLockMaybe lock(mutex_);
   if (fallback_database_ != nullptr) {
     tables_->known_bad_symbols_.clear();
@@ -1420,13 +1431,13 @@ const FileDescriptor* DescriptorPool::FindFileContainingSymbol(
 }
 
 const Descriptor* DescriptorPool::FindMessageTypeByName(
-    ConstStringParam name) const {
+    const std::string& name) const {
   Symbol result = tables_->FindByNameHelper(this, name);
   return (result.type == Symbol::MESSAGE) ? result.descriptor : nullptr;
 }
 
 const FieldDescriptor* DescriptorPool::FindFieldByName(
-    ConstStringParam name) const {
+    const std::string& name) const {
   Symbol result = tables_->FindByNameHelper(this, name);
   if (result.type == Symbol::FIELD &&
       !result.field_descriptor->is_extension()) {
@@ -1437,7 +1448,7 @@ const FieldDescriptor* DescriptorPool::FindFieldByName(
 }
 
 const FieldDescriptor* DescriptorPool::FindExtensionByName(
-    ConstStringParam name) const {
+    const std::string& name) const {
   Symbol result = tables_->FindByNameHelper(this, name);
   if (result.type == Symbol::FIELD && result.field_descriptor->is_extension()) {
     return result.field_descriptor;
@@ -1447,32 +1458,32 @@ const FieldDescriptor* DescriptorPool::FindExtensionByName(
 }
 
 const OneofDescriptor* DescriptorPool::FindOneofByName(
-    ConstStringParam name) const {
+    const std::string& name) const {
   Symbol result = tables_->FindByNameHelper(this, name);
   return (result.type == Symbol::ONEOF) ? result.oneof_descriptor : nullptr;
 }
 
 const EnumDescriptor* DescriptorPool::FindEnumTypeByName(
-    ConstStringParam name) const {
+    const std::string& name) const {
   Symbol result = tables_->FindByNameHelper(this, name);
   return (result.type == Symbol::ENUM) ? result.enum_descriptor : nullptr;
 }
 
 const EnumValueDescriptor* DescriptorPool::FindEnumValueByName(
-    ConstStringParam name) const {
+    const std::string& name) const {
   Symbol result = tables_->FindByNameHelper(this, name);
   return (result.type == Symbol::ENUM_VALUE) ? result.enum_value_descriptor
                                              : nullptr;
 }
 
 const ServiceDescriptor* DescriptorPool::FindServiceByName(
-    ConstStringParam name) const {
+    const std::string& name) const {
   Symbol result = tables_->FindByNameHelper(this, name);
   return (result.type == Symbol::SERVICE) ? result.service_descriptor : nullptr;
 }
 
 const MethodDescriptor* DescriptorPool::FindMethodByName(
-    ConstStringParam name) const {
+    const std::string& name) const {
   Symbol result = tables_->FindByNameHelper(this, name);
   return (result.type == Symbol::METHOD) ? result.method_descriptor : nullptr;
 }
@@ -1529,7 +1540,7 @@ const FieldDescriptor* DescriptorPool::InternalFindExtensionByNumberNoLock(
 }
 
 const FieldDescriptor* DescriptorPool::FindExtensionByPrintableName(
-    const Descriptor* extendee, ConstStringParam printable_name) const {
+    const Descriptor* extendee, const std::string& printable_name) const {
   if (extendee->extension_range_count() == 0) return nullptr;
   const FieldDescriptor* result = FindExtensionByName(printable_name);
   if (result != nullptr && result->containing_type() == extendee) {
@@ -1600,7 +1611,7 @@ const FieldDescriptor* Descriptor::FindFieldByNumber(int key) const {
 }
 
 const FieldDescriptor* Descriptor::FindFieldByLowercaseName(
-    ConstStringParam key) const {
+    const std::string& key) const {
   const FieldDescriptor* result =
       file()->tables_->FindFieldByLowercaseName(this, key);
   if (result == nullptr || result->is_extension()) {
@@ -1611,7 +1622,7 @@ const FieldDescriptor* Descriptor::FindFieldByLowercaseName(
 }
 
 const FieldDescriptor* Descriptor::FindFieldByCamelcaseName(
-    ConstStringParam key) const {
+    const std::string& key) const {
   const FieldDescriptor* result =
       file()->tables_->FindFieldByCamelcaseName(this, key);
   if (result == nullptr || result->is_extension()) {
@@ -1621,7 +1632,8 @@ const FieldDescriptor* Descriptor::FindFieldByCamelcaseName(
   }
 }
 
-const FieldDescriptor* Descriptor::FindFieldByName(ConstStringParam key) const {
+const FieldDescriptor* Descriptor::FindFieldByName(
+    const std::string& key) const {
   Symbol result =
       file()->tables_->FindNestedSymbolOfType(this, key, Symbol::FIELD);
   if (!result.IsNull() && !result.field_descriptor->is_extension()) {
@@ -1631,7 +1643,8 @@ const FieldDescriptor* Descriptor::FindFieldByName(ConstStringParam key) const {
   }
 }
 
-const OneofDescriptor* Descriptor::FindOneofByName(ConstStringParam key) const {
+const OneofDescriptor* Descriptor::FindOneofByName(
+    const std::string& key) const {
   Symbol result =
       file()->tables_->FindNestedSymbolOfType(this, key, Symbol::ONEOF);
   if (!result.IsNull()) {
@@ -1642,7 +1655,7 @@ const OneofDescriptor* Descriptor::FindOneofByName(ConstStringParam key) const {
 }
 
 const FieldDescriptor* Descriptor::FindExtensionByName(
-    ConstStringParam key) const {
+    const std::string& key) const {
   Symbol result =
       file()->tables_->FindNestedSymbolOfType(this, key, Symbol::FIELD);
   if (!result.IsNull() && result.field_descriptor->is_extension()) {
@@ -1653,7 +1666,7 @@ const FieldDescriptor* Descriptor::FindExtensionByName(
 }
 
 const FieldDescriptor* Descriptor::FindExtensionByLowercaseName(
-    ConstStringParam key) const {
+    const std::string& key) const {
   const FieldDescriptor* result =
       file()->tables_->FindFieldByLowercaseName(this, key);
   if (result == nullptr || !result->is_extension()) {
@@ -1664,7 +1677,7 @@ const FieldDescriptor* Descriptor::FindExtensionByLowercaseName(
 }
 
 const FieldDescriptor* Descriptor::FindExtensionByCamelcaseName(
-    ConstStringParam key) const {
+    const std::string& key) const {
   const FieldDescriptor* result =
       file()->tables_->FindFieldByCamelcaseName(this, key);
   if (result == nullptr || !result->is_extension()) {
@@ -1674,7 +1687,8 @@ const FieldDescriptor* Descriptor::FindExtensionByCamelcaseName(
   }
 }
 
-const Descriptor* Descriptor::FindNestedTypeByName(ConstStringParam key) const {
+const Descriptor* Descriptor::FindNestedTypeByName(
+    const std::string& key) const {
   Symbol result =
       file()->tables_->FindNestedSymbolOfType(this, key, Symbol::MESSAGE);
   if (!result.IsNull()) {
@@ -1685,7 +1699,7 @@ const Descriptor* Descriptor::FindNestedTypeByName(ConstStringParam key) const {
 }
 
 const EnumDescriptor* Descriptor::FindEnumTypeByName(
-    ConstStringParam key) const {
+    const std::string& key) const {
   Symbol result =
       file()->tables_->FindNestedSymbolOfType(this, key, Symbol::ENUM);
   if (!result.IsNull()) {
@@ -1696,7 +1710,7 @@ const EnumDescriptor* Descriptor::FindEnumTypeByName(
 }
 
 const EnumValueDescriptor* Descriptor::FindEnumValueByName(
-    ConstStringParam key) const {
+    const std::string& key) const {
   Symbol result =
       file()->tables_->FindNestedSymbolOfType(this, key, Symbol::ENUM_VALUE);
   if (!result.IsNull()) {
@@ -1719,7 +1733,7 @@ const FieldDescriptor* Descriptor::map_value() const {
 }
 
 const EnumValueDescriptor* EnumDescriptor::FindValueByName(
-    ConstStringParam key) const {
+    const std::string& key) const {
   Symbol result =
       file()->tables_->FindNestedSymbolOfType(this, key, Symbol::ENUM_VALUE);
   if (!result.IsNull()) {
@@ -1739,7 +1753,7 @@ const EnumValueDescriptor* EnumDescriptor::FindValueByNumberCreatingIfUnknown(
 }
 
 const MethodDescriptor* ServiceDescriptor::FindMethodByName(
-    ConstStringParam key) const {
+    const std::string& key) const {
   Symbol result =
       file()->tables_->FindNestedSymbolOfType(this, key, Symbol::METHOD);
   if (!result.IsNull()) {
@@ -1750,7 +1764,7 @@ const MethodDescriptor* ServiceDescriptor::FindMethodByName(
 }
 
 const Descriptor* FileDescriptor::FindMessageTypeByName(
-    ConstStringParam key) const {
+    const std::string& key) const {
   Symbol result = tables_->FindNestedSymbolOfType(this, key, Symbol::MESSAGE);
   if (!result.IsNull()) {
     return result.descriptor;
@@ -1760,7 +1774,7 @@ const Descriptor* FileDescriptor::FindMessageTypeByName(
 }
 
 const EnumDescriptor* FileDescriptor::FindEnumTypeByName(
-    ConstStringParam key) const {
+    const std::string& key) const {
   Symbol result = tables_->FindNestedSymbolOfType(this, key, Symbol::ENUM);
   if (!result.IsNull()) {
     return result.enum_descriptor;
@@ -1770,7 +1784,7 @@ const EnumDescriptor* FileDescriptor::FindEnumTypeByName(
 }
 
 const EnumValueDescriptor* FileDescriptor::FindEnumValueByName(
-    ConstStringParam key) const {
+    const std::string& key) const {
   Symbol result =
       tables_->FindNestedSymbolOfType(this, key, Symbol::ENUM_VALUE);
   if (!result.IsNull()) {
@@ -1781,7 +1795,7 @@ const EnumValueDescriptor* FileDescriptor::FindEnumValueByName(
 }
 
 const ServiceDescriptor* FileDescriptor::FindServiceByName(
-    ConstStringParam key) const {
+    const std::string& key) const {
   Symbol result = tables_->FindNestedSymbolOfType(this, key, Symbol::SERVICE);
   if (!result.IsNull()) {
     return result.service_descriptor;
@@ -1791,7 +1805,7 @@ const ServiceDescriptor* FileDescriptor::FindServiceByName(
 }
 
 const FieldDescriptor* FileDescriptor::FindExtensionByName(
-    ConstStringParam key) const {
+    const std::string& key) const {
   Symbol result = tables_->FindNestedSymbolOfType(this, key, Symbol::FIELD);
   if (!result.IsNull() && result.field_descriptor->is_extension()) {
     return result.field_descriptor;
@@ -1801,7 +1815,7 @@ const FieldDescriptor* FileDescriptor::FindExtensionByName(
 }
 
 const FieldDescriptor* FileDescriptor::FindExtensionByLowercaseName(
-    ConstStringParam key) const {
+    const std::string& key) const {
   const FieldDescriptor* result = tables_->FindFieldByLowercaseName(this, key);
   if (result == nullptr || !result->is_extension()) {
     return nullptr;
@@ -1811,7 +1825,7 @@ const FieldDescriptor* FileDescriptor::FindExtensionByLowercaseName(
 }
 
 const FieldDescriptor* FileDescriptor::FindExtensionByCamelcaseName(
-    ConstStringParam key) const {
+    const std::string& key) const {
   const FieldDescriptor* result = tables_->FindFieldByCamelcaseName(this, key);
   if (result == nullptr || !result->is_extension()) {
     return nullptr;
@@ -1868,23 +1882,22 @@ EnumDescriptor::FindReservedRangeContainingNumber(int number) const {
 // -------------------------------------------------------------------
 
 bool DescriptorPool::TryFindFileInFallbackDatabase(
-    StringPiece name) const {
+    const std::string& name) const {
   if (fallback_database_ == nullptr) return false;
 
-  auto name_string = std::string(name);
-  if (tables_->known_bad_files_.count(name_string) > 0) return false;
+  if (tables_->known_bad_files_.count(name) > 0) return false;
 
   FileDescriptorProto file_proto;
-  if (!fallback_database_->FindFileByName(name_string, &file_proto) ||
+  if (!fallback_database_->FindFileByName(name, &file_proto) ||
       BuildFileFromDatabase(file_proto) == nullptr) {
-    tables_->known_bad_files_.insert(std::move(name_string));
+    tables_->known_bad_files_.insert(name);
     return false;
   }
   return true;
 }
 
-bool DescriptorPool::IsSubSymbolOfBuiltType(StringPiece name) const {
-  auto prefix = std::string(name);
+bool DescriptorPool::IsSubSymbolOfBuiltType(const std::string& name) const {
+  std::string prefix = name;
   for (;;) {
     std::string::size_type dot_pos = prefix.find_last_of('.');
     if (dot_pos == std::string::npos) {
@@ -1906,11 +1919,10 @@ bool DescriptorPool::IsSubSymbolOfBuiltType(StringPiece name) const {
 }
 
 bool DescriptorPool::TryFindSymbolInFallbackDatabase(
-    StringPiece name) const {
+    const std::string& name) const {
   if (fallback_database_ == nullptr) return false;
 
-  auto name_string = std::string(name);
-  if (tables_->known_bad_symbols_.count(name_string) > 0) return false;
+  if (tables_->known_bad_symbols_.count(name) > 0) return false;
 
   FileDescriptorProto file_proto;
   if (  // We skip looking in the fallback database if the name is a sub-symbol
@@ -1932,7 +1944,7 @@ bool DescriptorPool::TryFindSymbolInFallbackDatabase(
       IsSubSymbolOfBuiltType(name)
 
       // Look up file containing this symbol in fallback database.
-      || !fallback_database_->FindFileContainingSymbol(name_string, &file_proto)
+      || !fallback_database_->FindFileContainingSymbol(name, &file_proto)
 
       // Check if we've already built this file. If so, it apparently doesn't
       // contain the symbol we're looking for.  Some DescriptorDatabases
@@ -1941,7 +1953,7 @@ bool DescriptorPool::TryFindSymbolInFallbackDatabase(
 
       // Build the file.
       || BuildFileFromDatabase(file_proto) == nullptr) {
-    tables_->known_bad_symbols_.insert(std::move(name_string));
+    tables_->known_bad_symbols_.insert(name);
     return false;
   }
 
@@ -3510,7 +3522,7 @@ class DescriptorBuilder {
     return pool->enforce_weak_;
   }
   static inline bool get_is_placeholder(const Descriptor* descriptor) {
-    return descriptor != nullptr && descriptor->is_placeholder_;
+    return descriptor->is_placeholder_;
   }
   static inline void assert_mutex_held(const DescriptorPool* pool) {
     if (pool->mutex_ != nullptr) {
@@ -3863,7 +3875,7 @@ Symbol DescriptorBuilder::LookupSymbol(
   return result;
 }
 
-static bool ValidateQualifiedName(StringPiece name) {
+static bool ValidateQualifiedName(const std::string& name) {
   bool last_was_period = false;
 
   for (int i = 0; i < name.size(); i++) {
@@ -3883,14 +3895,14 @@ static bool ValidateQualifiedName(StringPiece name) {
   return !name.empty() && !last_was_period;
 }
 
-Symbol DescriptorPool::NewPlaceholder(StringPiece name,
+Symbol DescriptorPool::NewPlaceholder(const std::string& name,
                                       PlaceholderType placeholder_type) const {
   MutexLockMaybe lock(mutex_);
   return NewPlaceholderWithMutexHeld(name, placeholder_type);
 }
 
 Symbol DescriptorPool::NewPlaceholderWithMutexHeld(
-    StringPiece name, PlaceholderType placeholder_type) const {
+    const std::string& name, PlaceholderType placeholder_type) const {
   if (mutex_) {
     mutex_->AssertHeld();
   }
@@ -3988,13 +4000,13 @@ Symbol DescriptorPool::NewPlaceholderWithMutexHeld(
 }
 
 FileDescriptor* DescriptorPool::NewPlaceholderFile(
-    StringPiece name) const {
+    const std::string& name) const {
   MutexLockMaybe lock(mutex_);
   return NewPlaceholderFileWithMutexHeld(name);
 }
 
 FileDescriptor* DescriptorPool::NewPlaceholderFileWithMutexHeld(
-    StringPiece name) const {
+    const std::string& name) const {
   if (mutex_) {
     mutex_->AssertHeld();
   }
@@ -7268,9 +7280,9 @@ void DescriptorBuilder::LogUnusedDependency(const FileDescriptorProto& proto,
   }
 }
 
-Symbol DescriptorPool::CrossLinkOnDemandHelper(StringPiece name,
+Symbol DescriptorPool::CrossLinkOnDemandHelper(const std::string& name,
                                                bool expecting_enum) const {
-  auto lookup_name = std::string(name);
+  std::string lookup_name = name;
   if (!lookup_name.empty() && lookup_name[0] == '.') {
     lookup_name = lookup_name.substr(1);
   }
@@ -7398,7 +7410,7 @@ void LazyDescriptor::Set(const Descriptor* descriptor) {
   descriptor_ = descriptor;
 }
 
-void LazyDescriptor::SetLazy(StringPiece name,
+void LazyDescriptor::SetLazy(const std::string& name,
                              const FileDescriptor* file) {
   // verify Init() has been called and Set hasn't been called yet.
   GOOGLE_CHECK(!descriptor_);

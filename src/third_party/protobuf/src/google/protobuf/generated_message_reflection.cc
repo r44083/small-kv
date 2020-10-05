@@ -50,7 +50,6 @@
 #include <google/protobuf/repeated_field.h>
 #include <google/protobuf/unknown_field_set.h>
 #include <google/protobuf/wire_format.h>
-#include <google/protobuf/stubs/strutil.h>
 
 
 #include <google/protobuf/port_def.inc>
@@ -82,7 +81,7 @@ bool IsMapFieldInApi(const FieldDescriptor* field) { return field->is_map(); }
 
 namespace internal {
 
-bool ParseNamedEnum(const EnumDescriptor* descriptor, ConstStringParam name,
+bool ParseNamedEnum(const EnumDescriptor* descriptor, const std::string& name,
                     int* value) {
   const EnumValueDescriptor* d = descriptor->FindValueByName(name);
   if (d == nullptr) return false;
@@ -170,12 +169,6 @@ static void ReportReflectionUsageEnumTypeError(
              << "\n"
                 "    Actual    : "
              << value->full_name();
-}
-
-inline void CheckInvalidAccess(const internal::ReflectionSchema& schema,
-                               const FieldDescriptor* field) {
-  GOOGLE_CHECK(!schema.IsFieldStripped(field))
-      << "invalid access to a stripped field " << field->full_name();
 }
 
 #define USAGE_CHECK(CONDITION, METHOD, ERROR_DESCRIPTION) \
@@ -359,8 +352,6 @@ size_t Reflection::SpaceUsedLong(const Message& message) const {
 
 void Reflection::SwapField(Message* message1, Message* message2,
                            const FieldDescriptor* field) const {
-  CheckInvalidAccess(schema_, field);
-
   if (field->is_repeated()) {
     switch (field->cpp_type()) {
 #define SWAP_ARRAYS(CPPTYPE, TYPE)                                 \
@@ -658,7 +649,6 @@ void Reflection::Swap(Message* message1, Message* message2) const {
   for (int i = 0; i <= last_non_weak_field_index_; i++) {
     const FieldDescriptor* field = descriptor_->field(i);
     if (schema_.InRealOneof(field)) continue;
-    if (schema_.IsFieldStripped(field)) continue;
     SwapField(message1, message2, field);
   }
   const int oneof_decl_count = descriptor_->oneof_decl_count();
@@ -704,7 +694,6 @@ void Reflection::SwapFields(
   const int fields_size = static_cast<int>(fields.size());
   for (int i = 0; i < fields_size; i++) {
     const FieldDescriptor* field = fields[i];
-    CheckInvalidAccess(schema_, field);
     if (field->is_extension()) {
       MutableExtensionSet(message1)->SwapExtension(
           MutableExtensionSet(message2), field->number());
@@ -736,7 +725,6 @@ bool Reflection::HasField(const Message& message,
                           const FieldDescriptor* field) const {
   USAGE_CHECK_MESSAGE_TYPE(HasField);
   USAGE_CHECK_SINGULAR(HasField);
-  CheckInvalidAccess(schema_, field);
 
   if (field->is_extension()) {
     return GetExtensionSet(message).Has(field->number());
@@ -753,7 +741,6 @@ int Reflection::FieldSize(const Message& message,
                           const FieldDescriptor* field) const {
   USAGE_CHECK_MESSAGE_TYPE(FieldSize);
   USAGE_CHECK_REPEATED(FieldSize);
-  CheckInvalidAccess(schema_, field);
 
   if (field->is_extension()) {
     return GetExtensionSet(message).ExtensionSize(field->number());
@@ -798,7 +785,6 @@ int Reflection::FieldSize(const Message& message,
 void Reflection::ClearField(Message* message,
                             const FieldDescriptor* field) const {
   USAGE_CHECK_MESSAGE_TYPE(ClearField);
-  CheckInvalidAccess(schema_, field);
 
   if (field->is_extension()) {
     MutableExtensionSet(message)->ClearExtension(field->number());
@@ -854,7 +840,7 @@ void Reflection::ClearField(Message* message,
         }
 
         case FieldDescriptor::CPPTYPE_MESSAGE:
-          if (schema_.HasBitIndex(field) == -1) {
+          if (!schema_.HasHasbits()) {
             // Proto3 does not have has-bits and we need to set a message field
             // to nullptr in order to indicate its un-presence.
             if (GetArena(message) == nullptr) {
@@ -913,7 +899,6 @@ void Reflection::RemoveLast(Message* message,
                             const FieldDescriptor* field) const {
   USAGE_CHECK_MESSAGE_TYPE(RemoveLast);
   USAGE_CHECK_REPEATED(RemoveLast);
-  CheckInvalidAccess(schema_, field);
 
   if (field->is_extension()) {
     MutableExtensionSet(message)->RemoveLast(field->number());
@@ -961,7 +946,6 @@ void Reflection::RemoveLast(Message* message,
 Message* Reflection::ReleaseLast(Message* message,
                                  const FieldDescriptor* field) const {
   USAGE_CHECK_ALL(ReleaseLast, REPEATED, MESSAGE);
-  CheckInvalidAccess(schema_, field);
 
   if (field->is_extension()) {
     return static_cast<Message*>(
@@ -982,7 +966,6 @@ void Reflection::SwapElements(Message* message, const FieldDescriptor* field,
                               int index1, int index2) const {
   USAGE_CHECK_MESSAGE_TYPE(Swap);
   USAGE_CHECK_REPEATED(Swap);
-  CheckInvalidAccess(schema_, field);
 
   if (field->is_extension()) {
     MutableExtensionSet(message)->SwapElements(field->number(), index1, index2);
@@ -1047,9 +1030,8 @@ bool CreateUnknownEnumValues(const FieldDescriptor* field) {
 }  // namespace internal
 using internal::CreateUnknownEnumValues;
 
-void Reflection::ListFieldsMayFailOnStripped(
-    const Message& message, bool should_fail,
-    std::vector<const FieldDescriptor*>* output) const {
+void Reflection::ListFields(const Message& message,
+                            std::vector<const FieldDescriptor*>* output) const {
   output->clear();
 
   // Optimization:  The default instance never has any fields set.
@@ -1066,9 +1048,6 @@ void Reflection::ListFieldsMayFailOnStripped(
   output->reserve(descriptor_->field_count());
   for (int i = 0; i <= last_non_weak_field_index_; i++) {
     const FieldDescriptor* field = descriptor_->field(i);
-    if (!should_fail && schema_.IsFieldStripped(field)) {
-      continue;
-    }
     if (field->is_repeated()) {
       if (FieldSize(message, field) > 0) {
         output->push_back(field);
@@ -1099,16 +1078,6 @@ void Reflection::ListFieldsMayFailOnStripped(
 
   // ListFields() must sort output by field number.
   std::sort(output->begin(), output->end(), FieldNumberSorter());
-}
-
-void Reflection::ListFields(const Message& message,
-                            std::vector<const FieldDescriptor*>* output) const {
-  ListFieldsMayFailOnStripped(message, true, output);
-}
-
-void Reflection::ListFieldsOmitStripped(
-    const Message& message, std::vector<const FieldDescriptor*>* output) const {
-  ListFieldsMayFailOnStripped(message, false, output);
 }
 
 // -------------------------------------------------------------------
@@ -1480,7 +1449,6 @@ const Message& Reflection::GetMessage(const Message& message,
                                       const FieldDescriptor* field,
                                       MessageFactory* factory) const {
   USAGE_CHECK_ALL(GetMessage, SINGULAR, MESSAGE);
-  CheckInvalidAccess(schema_, field);
 
   if (factory == nullptr) factory = message_factory_;
 
@@ -1500,7 +1468,6 @@ Message* Reflection::MutableMessage(Message* message,
                                     const FieldDescriptor* field,
                                     MessageFactory* factory) const {
   USAGE_CHECK_ALL(MutableMessage, SINGULAR, MESSAGE);
-  CheckInvalidAccess(schema_, field);
 
   if (factory == nullptr) factory = message_factory_;
 
@@ -1536,7 +1503,6 @@ void Reflection::UnsafeArenaSetAllocatedMessage(
     Message* message, Message* sub_message,
     const FieldDescriptor* field) const {
   USAGE_CHECK_ALL(SetAllocatedMessage, SINGULAR, MESSAGE);
-  CheckInvalidAccess(schema_, field);
 
   if (field->is_extension()) {
     MutableExtensionSet(message)->UnsafeArenaSetAllocatedMessage(
@@ -1568,8 +1534,6 @@ void Reflection::UnsafeArenaSetAllocatedMessage(
 
 void Reflection::SetAllocatedMessage(Message* message, Message* sub_message,
                                      const FieldDescriptor* field) const {
-  CheckInvalidAccess(schema_, field);
-
   // If message and sub-message are in different memory ownership domains
   // (different arenas, or one is on heap and one is not), then we may need to
   // do a copy.
@@ -1598,7 +1562,6 @@ Message* Reflection::UnsafeArenaReleaseMessage(Message* message,
                                                const FieldDescriptor* field,
                                                MessageFactory* factory) const {
   USAGE_CHECK_ALL(ReleaseMessage, SINGULAR, MESSAGE);
-  CheckInvalidAccess(schema_, field);
 
   if (factory == nullptr) factory = message_factory_;
 
@@ -1627,8 +1590,6 @@ Message* Reflection::UnsafeArenaReleaseMessage(Message* message,
 Message* Reflection::ReleaseMessage(Message* message,
                                     const FieldDescriptor* field,
                                     MessageFactory* factory) const {
-  CheckInvalidAccess(schema_, field);
-
   Message* released = UnsafeArenaReleaseMessage(message, field, factory);
   if (GetArena(message) != nullptr && released != nullptr) {
     Message* copy_from_arena = released->New();
@@ -1642,7 +1603,6 @@ const Message& Reflection::GetRepeatedMessage(const Message& message,
                                               const FieldDescriptor* field,
                                               int index) const {
   USAGE_CHECK_ALL(GetRepeatedMessage, REPEATED, MESSAGE);
-  CheckInvalidAccess(schema_, field);
 
   if (field->is_extension()) {
     return static_cast<const Message&>(
@@ -1663,7 +1623,6 @@ Message* Reflection::MutableRepeatedMessage(Message* message,
                                             const FieldDescriptor* field,
                                             int index) const {
   USAGE_CHECK_ALL(MutableRepeatedMessage, REPEATED, MESSAGE);
-  CheckInvalidAccess(schema_, field);
 
   if (field->is_extension()) {
     return static_cast<Message*>(
@@ -1684,7 +1643,6 @@ Message* Reflection::MutableRepeatedMessage(Message* message,
 Message* Reflection::AddMessage(Message* message, const FieldDescriptor* field,
                                 MessageFactory* factory) const {
   USAGE_CHECK_ALL(AddMessage, REPEATED, MESSAGE);
-  CheckInvalidAccess(schema_, field);
 
   if (factory == nullptr) factory = message_factory_;
 
@@ -1727,7 +1685,6 @@ void Reflection::AddAllocatedMessage(Message* message,
                                      const FieldDescriptor* field,
                                      Message* new_entry) const {
   USAGE_CHECK_ALL(AddAllocatedMessage, REPEATED, MESSAGE);
-  CheckInvalidAccess(schema_, field);
 
   if (field->is_extension()) {
     MutableExtensionSet(message)->AddAllocatedMessage(field, new_entry);
@@ -1749,8 +1706,6 @@ void* Reflection::MutableRawRepeatedField(Message* message,
                                           int ctype,
                                           const Descriptor* desc) const {
   USAGE_CHECK_REPEATED("MutableRawRepeatedField");
-  CheckInvalidAccess(schema_, field);
-
   if (field->cpp_type() != cpptype &&
       (field->cpp_type() != FieldDescriptor::CPPTYPE_ENUM ||
        cpptype != FieldDescriptor::CPPTYPE_INT32))
@@ -1976,9 +1931,6 @@ bool Reflection::HasBit(const Message& message,
     return IsIndexInHasBitSet(GetHasBits(message), schema_.HasBitIndex(field));
   }
 
-  // Intentionally check here because HasBitIndex(field) != -1 means valid.
-  CheckInvalidAccess(schema_, field);
-
   // proto3: no has-bits. All fields present except messages, which are
   // present only if their message-field pointer is non-null.
   if (field->cpp_type() == FieldDescriptor::CPPTYPE_MESSAGE) {
@@ -2048,7 +2000,6 @@ void Reflection::ClearBit(Message* message,
     return;
   }
   const uint32 index = schema_.HasBitIndex(field);
-  if (index == -1) return;
   MutableHasBits(message)[index / 32] &=
       ~(static_cast<uint32>(1) << (index % 32));
 }

@@ -142,21 +142,18 @@ class PROTOC_EXPORT Generator : public CodeGenerator {
   Generator() {}
   virtual ~Generator() {}
 
-  bool Generate(const FileDescriptor* file, const std::string& parameter,
-                GeneratorContext* context, std::string* error) const override {
+  virtual bool Generate(const FileDescriptor* file,
+                        const std::string& parameter, GeneratorContext* context,
+                        std::string* error) const {
     *error = "Unimplemented Generate() method. Call GenerateAll() instead.";
     return false;
   }
 
-  bool HasGenerateAll() const override { return true; }
+  virtual bool HasGenerateAll() const { return true; }
 
-  bool GenerateAll(const std::vector<const FileDescriptor*>& files,
-                   const std::string& parameter, GeneratorContext* context,
-                   std::string* error) const override;
-
-  uint64 GetSupportedFeatures() const override {
-    return FEATURE_PROTO3_OPTIONAL;
-  }
+  virtual bool GenerateAll(const std::vector<const FileDescriptor*>& files,
+                           const std::string& parameter,
+                           GeneratorContext* context, std::string* error) const;
 
  private:
   void GenerateHeader(const GeneratorOptions& options,

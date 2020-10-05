@@ -40,7 +40,6 @@
 #include <google/protobuf/text_format.h>
 #include <google/protobuf/testing/googletest.h>
 #include <gtest/gtest.h>
-#include <google/protobuf/stubs/strutil.h>
 
 using proto3_arena_unittest::TestAllTypes;
 
@@ -138,7 +137,7 @@ TEST(Proto3ArenaTest, UnknownFields) {
   // We can modify this UnknownFieldSet.
   unknown_fields->AddVarint(1, 2);
   // And the unknown fields should be changed.
-  ASSERT_NE(original.ByteSizeLong(), arena_message->ByteSizeLong());
+  ASSERT_NE(original.ByteSize(), arena_message->ByteSize());
   ASSERT_FALSE(
       arena_message->GetReflection()->GetUnknownFields(*arena_message).empty());
 }
@@ -203,7 +202,7 @@ TEST(Proto3OptionalTest, OptionalFields) {
   msg.set_optional_int32(0);
   EXPECT_TRUE(msg.has_optional_int32());
 
-  std::string serialized;
+  string serialized;
   msg.SerializeToString(&serialized);
   EXPECT_GT(serialized.size(), 0);
 
@@ -236,7 +235,7 @@ TEST(Proto3OptionalTest, OptionalField) {
   msg.set_optional_int32(0);
   EXPECT_TRUE(msg.has_optional_int32());
 
-  std::string serialized;
+  string serialized;
   msg.SerializeToString(&serialized);
   EXPECT_GT(serialized.size(), 0);
 

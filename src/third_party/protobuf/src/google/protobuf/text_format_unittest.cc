@@ -55,10 +55,9 @@
 #include <google/protobuf/io/tokenizer.h>
 #include <google/protobuf/io/zero_copy_stream_impl.h>
 #include <google/protobuf/stubs/strutil.h>
-#include <gmock/gmock.h>
+#include <google/protobuf/stubs/substitute.h>
 #include <google/protobuf/testing/googletest.h>
 #include <gtest/gtest.h>
-#include <google/protobuf/stubs/substitute.h>
 
 
 #include <google/protobuf/port_def.inc>
@@ -347,13 +346,14 @@ TEST_F(TextFormatTest, PrintUnknownMessage) {
   UnknownFieldSet unknown_fields;
   EXPECT_TRUE(unknown_fields.ParseFromString(data));
   EXPECT_TRUE(TextFormat::PrintUnknownFieldsToString(unknown_fields, &text));
-  // Field 44 and 48 can be printed in any order.
-  EXPECT_THAT(text, testing::HasSubstr("44: \"abc\"\n"
-                                       "44: \"def\"\n"
-                                       "44: \"\"\n"));
-  EXPECT_THAT(text, testing::HasSubstr("48 {\n"
-                                       "  1: 123\n"
-                                       "}\n"));
+  EXPECT_EQ(
+      "44: \"abc\"\n"
+      "44: \"def\"\n"
+      "44: \"\"\n"
+      "48 {\n"
+      "  1: 123\n"
+      "}\n",
+      text);
 }
 
 TEST_F(TextFormatTest, PrintDeeplyNestedUnknownMessage) {
@@ -1911,33 +1911,7 @@ TEST_F(TextFormatParserTest, SetRecursionLimit) {
 
   input = strings::Substitute(format, input);
   parser_.SetRecursionLimit(100);
-  ExpectMessage(input,
-                "Message is too deep, the parser exceeded the configured "
-                "recursion limit of 100.",
-                1, 908, &message, false);
-
-  parser_.SetRecursionLimit(101);
-  ExpectSuccessAndTree(input, &message, nullptr);
-}
-
-TEST_F(TextFormatParserTest, SetRecursionLimitUnknownField) {
-  const char* format = "unknown_child: { $0 }";
-  std::string input;
-  for (int i = 0; i < 100; ++i) input = strings::Substitute(format, input);
-
-  parser_.AllowUnknownField(true);
-
-  unittest::NestedTestAllTypes message;
-  ExpectSuccessAndTree(input, &message, nullptr);
-
-  input = strings::Substitute(format, input);
-  parser_.SetRecursionLimit(100);
-  ExpectMessage(
-      input,
-      "WARNING:Message type \"protobuf_unittest.NestedTestAllTypes\" has no "
-      "field named \"unknown_child\".\n1:1716: Message is too deep, the parser "
-      "exceeded the configured recursion limit of 100.",
-      1, 14, &message, false);
+  ExpectMessage(input, "Message is too deep", 1, 908, &message, false);
 
   parser_.SetRecursionLimit(101);
   ExpectSuccessAndTree(input, &message, nullptr);

@@ -467,7 +467,6 @@ bool IgnoreMessage(const Descriptor* d) { return d->options().map_entry(); }
 
 // Does JSPB ignore this entire oneof? True only if all fields are ignored.
 bool IgnoreOneof(const OneofDescriptor* oneof) {
-  if (oneof->is_synthetic()) return true;
   for (int i = 0; i < oneof->field_count(); i++) {
     if (!IgnoreField(oneof->field(i))) {
       return false;
@@ -577,7 +576,6 @@ std::string JSOneofIndex(const OneofDescriptor* oneof) {
   int index = -1;
   for (int i = 0; i < oneof->containing_type()->oneof_decl_count(); i++) {
     const OneofDescriptor* o = oneof->containing_type()->oneof_decl(i);
-    if (o->is_synthetic()) continue;
     // If at least one field in this oneof is not JSPB-ignored, count the oneof.
     for (int j = 0; j < o->field_count(); j++) {
       const FieldDescriptor* f = o->field(j);
@@ -794,11 +792,6 @@ std::string FloatToString(float value) {
 std::string DoubleToString(double value) {
   std::string result = SimpleDtoa(value);
   return PostProcessFloat(result);
-}
-
-bool InRealOneof(const FieldDescriptor* field) {
-  return field->containing_oneof() &&
-         !field->containing_oneof()->is_synthetic();
 }
 
 // Return true if this is an integral field that should be represented as string
@@ -1180,7 +1173,7 @@ std::string RepeatedFieldsArrayName(const GeneratorOptions& options,
 
 bool HasOneofFields(const Descriptor* desc) {
   for (int i = 0; i < desc->field_count(); i++) {
-    if (InRealOneof(desc->field(i))) {
+    if (desc->field(i)->containing_oneof()) {
       return true;
     }
   }
@@ -1418,9 +1411,15 @@ std::string GetPivot(const Descriptor* desc) {
 // generate extra methods (clearFoo() and hasFoo()) for this field.
 bool HasFieldPresence(const GeneratorOptions& options,
                       const FieldDescriptor* field) {
-  // This returns false for repeated fields and maps, but we still do
-  // generate clearFoo() methods for these through a special case elsewhere.
-  return field->has_presence();
+  if (field->is_repeated() || field->is_map()) {
+    // We say repeated fields and maps don't have presence, but we still do
+    // generate clearFoo() methods for them through a special case elsewhere.
+    return false;
+  }
+
+  return field->cpp_type() == FieldDescriptor::CPPTYPE_MESSAGE ||
+         field->containing_oneof() != NULL ||
+         field->file()->syntax() == FileDescriptor::SYNTAX_PROTO2;
 }
 
 // We use this to implement the semantics that same file can be generated
@@ -2677,7 +2676,7 @@ void Generator::GenerateClassField(const GeneratorOptions& options,
                               /* singular_if_not_packed = */ false),
         "class", GetMessagePath(options, field->containing_type()),
         "settername", "set" + JSGetterName(options, field), "oneoftag",
-        (InRealOneof(field) ? "Oneof" : ""), "repeatedtag",
+        (field->containing_oneof() ? "Oneof" : ""), "repeatedtag",
         (field->is_repeated() ? "Repeated" : ""));
     printer->Annotate("settername", field);
 
@@ -2687,7 +2686,7 @@ void Generator::GenerateClassField(const GeneratorOptions& options,
         "\n"
         "\n",
         "index", JSFieldIndex(field), "oneofgroup",
-        (InRealOneof(field) ? (", " + JSOneofArray(options, field))
+        (field->containing_oneof() ? (", " + JSOneofArray(options, field))
                                    : ""));
 
     if (field->is_repeated()) {
@@ -2812,7 +2811,8 @@ void Generator::GenerateClassField(const GeneratorOptions& options,
           "  return jspb.Message.set$oneoftag$Field(this, $index$",
           "class", GetMessagePath(options, field->containing_type()),
           "settername", "set" + JSGetterName(options, field), "oneoftag",
-          (InRealOneof(field) ? "Oneof" : ""), "index", JSFieldIndex(field));
+          (field->containing_oneof() ? "Oneof" : ""), "index",
+          JSFieldIndex(field));
       printer->Annotate("settername", field);
       printer->Print(
           "$oneofgroup$, $type$value$rptvalueinit$$typeclose$);\n"
@@ -2822,7 +2822,8 @@ void Generator::GenerateClassField(const GeneratorOptions& options,
           "type",
           untyped ? "/** @type{string|number|boolean|Array|undefined} */(" : "",
           "typeclose", untyped ? ")" : "", "oneofgroup",
-          (InRealOneof(field) ? (", " + JSOneofArray(options, field)) : ""),
+          (field->containing_oneof() ? (", " + JSOneofArray(options, field))
+                                     : ""),
           "rptvalueinit", (field->is_repeated() ? " || []" : ""));
     }
 
@@ -2898,8 +2899,8 @@ void Generator::GenerateClassField(const GeneratorOptions& options,
             "$index$$maybeoneofgroup$, ",
         "class", GetMessagePath(options, field->containing_type()),
         "clearername", "clear" + JSGetterName(options, field),
-        "maybeoneof", (InRealOneof(field) ? "Oneof" : ""),
-        "maybeoneofgroup", (InRealOneof(field)
+        "maybeoneof", (field->containing_oneof() ? "Oneof" : ""),
+        "maybeoneofgroup", (field->containing_oneof()
                             ? (", " + JSOneofArray(options, field))
                             : ""),
         "index", JSFieldIndex(field));
@@ -2964,7 +2965,7 @@ void Generator::GenerateRepeatedPrimitiveHelperMethods(
       "\n",
       "type", untyped ? "/** @type{string|number|boolean|!Uint8Array} */(" : "",
       "typeclose", untyped ? ")" : "", "oneofgroup",
-      (InRealOneof(field) ? (", " + JSOneofArray(options, field)) : ""),
+      (field->containing_oneof() ? (", " + JSOneofArray(options, field)) : ""),
       "rptvalueinit", "");
   // clang-format on
 }
@@ -2993,7 +2994,7 @@ void Generator::GenerateRepeatedMessageHelperMethods(
       "\n"
       "\n",
       "index", JSFieldIndex(field), "oneofgroup",
-      (InRealOneof(field) ? (", " + JSOneofArray(options, field)) : ""),
+      (field->containing_oneof() ? (", " + JSOneofArray(options, field)) : ""),
       "ctor", GetMessagePath(options, field->message_type()));
 }
 

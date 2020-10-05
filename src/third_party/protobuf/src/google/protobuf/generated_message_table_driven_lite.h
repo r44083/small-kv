@@ -31,9 +31,10 @@
 #ifndef GOOGLE_PROTOBUF_GENERATED_MESSAGE_TABLE_DRIVEN_LITE_H__
 #define GOOGLE_PROTOBUF_GENERATED_MESSAGE_TABLE_DRIVEN_LITE_H__
 
+#include <google/protobuf/generated_message_table_driven.h>
+
 #include <google/protobuf/io/zero_copy_stream_impl_lite.h>
 #include <google/protobuf/extension_set.h>
-#include <google/protobuf/generated_message_table_driven.h>
 #include <google/protobuf/implicit_weak_message.h>
 #include <google/protobuf/inlined_string_field.h>
 #include <google/protobuf/repeated_field.h>
@@ -309,7 +310,7 @@ inline bool HandleEnum(const ParseTable& table, io::CodedInputStream* input,
     return false;
   }
 
-  AuxiliaryParseTableField::EnumValidator validator =
+  AuxillaryParseTableField::EnumValidator validator =
       table.aux[field_number].enums.validator;
   if (validator == nullptr || validator(value)) {
     switch (cardinality) {
@@ -794,7 +795,7 @@ bool MergePartialFromCodedStreamInlined(MessageLite* msg,
             return false;
           }
 
-          AuxiliaryParseTableField::EnumValidator validator =
+          AuxillaryParseTableField::EnumValidator validator =
               table.aux[field_number].enums.validator;
           RepeatedField<int>* values = Raw<RepeatedField<int>>(msg, offset);
 
