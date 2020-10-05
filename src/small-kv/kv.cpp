@@ -12,19 +12,19 @@ kv::kv()
     compatible with the version of the headers we compiled against. */
     GOOGLE_PROTOBUF_VERIFY_VERSION;
     
-    rt = raxNew();
+    rt = (rax *)raxNew();
 }
 
 kv::~kv()
 {
-    raxFreeWithCallback(rt, free);
+    raxFreeWithCallback((rax *)rt, free);
 }
 
 int kv::_set(const char *key, uint8_t *buff, size_t size, bool can_create)
 {
     // Keep data in memory (radix tree)
     size_t key_len = strlen(key);
-    void *node_data = raxFind(rt, (unsigned char *)key, key_len);
+    void *node_data = raxFind((rax *)rt, (unsigned char *)key, key_len);
     if(node_data == raxNotFound && !can_create)
         return -1; // Node not found and we can't create new one
     
@@ -35,7 +35,7 @@ int kv::_set(const char *key, uint8_t *buff, size_t size, bool can_create)
     memcpy(new_data + sizeof(size), buff, size);
     
     node_data = NULL;
-    if(!raxInsert(rt, (unsigned char *)key, key_len, new_data, &node_data) &&
+    if(!raxInsert((rax *)rt, (unsigned char *)key, key_len, new_data, &node_data) &&
         errno == ENOMEM)
     {
         free(new_data);
@@ -70,7 +70,7 @@ int kv::_set(const char *key, uint8_t *buff, size_t size, bool can_create)
 int kv::_get(const char *key, uint8_t **buff, size_t &size)
 {
     // Get data from memory (radix tree)
-    uint8_t *node_data = (uint8_t *)raxFind(rt, (unsigned char *)key, strlen(key));
+    uint8_t *node_data = (uint8_t *)raxFind((rax *)rt, (unsigned char *)key, strlen(key));
     if(node_data == raxNotFound)
         return -1;
     
