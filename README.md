@@ -1,16 +1,9 @@
 # small-kv
 Small key-value embedded database
 
-## How to build:
-* For Linux
+## How to build
 ```
-cmake . -Bbuild
-make -C build
+git clone --recursive https://github.com/yhsb2k/small-kv.git
+cd small-kv
+make
 ```
-* For Windows
-```
-cmake . -Bbuild -G "MinGW Makefiles"
-make -C build
-```
-
-Find build binaries in ```build``` folder
